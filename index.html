@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>MSO Memory: Glyph ↔ Name</title>
+  <style>
+    :root{
+      --bg:#050a06;
+      --fg:#7CFF9B;
+      --fg2:#3cff74;
+      --dim:#1a3b22;
+      --glass: rgba(124,255,155,.06);
+      --warn:#ffcf5a;
+      --bad:#ff6b6b;
+      --good:#7CFF9B;
+      --shadow: rgba(0,0,0,.55);
+      --scan: rgba(124,255,155,.10);
+      --scan2: rgba(124,255,155,.04);
+      --card:#07150c;
+      --card2:#0a2414;
+      --border: rgba(124,255,155,.25);
+      --border2: rgba(124,255,155,.12);
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    html,body{height:100%;}
+    body{
+      margin:0;
+      background: radial-gradient(1200px 700px at 50% 35%, rgba(124,255,155,.10), transparent 55%),
+                  radial-gradient(900px 500px at 50% 80%, rgba(124,255,155,.06), transparent 60%),
+                  var(--bg);
+      color: var(--fg);
+      font-family: var(--mono);
+      letter-spacing: .2px;
+      overflow-x:hidden;
+    }
+
+    .crt{
+      min-height:100%;
+      display:flex;
+      align-items:stretch;
+      justify-content:center;
+      padding:18px 12px 26px;
+      box-sizing:border-box;
+    }
+    .frame{
+      width:min(1100px, 100%);
+      position:relative;
+      background: linear-gradient(180deg, rgba(124,255,155,.04), rgba(124,255,155,.02));
+      border: 1px solid var(--border);
+      box-shadow: 0 18px 50px var(--shadow), inset 0 0 70px rgba(0,0,0,.45);
+      border-radius: 18px;
+      padding: 14px 14px 18px;
+    }
+    .frame:before{
+      content:"";
+      position:absolute; inset:0;
+      border-radius: 18px;
+      pointer-events:none;
+      background:
+        repeating-linear-gradient(180deg, rgba(0,0,0,.0) 0px, rgba(0,0,0,.0) 2px, rgba(0,0,0,.18) 3px),
+        radial-gradient(1200px 700px at 50% 35%, rgba(124,255,155,.09), transparent 62%),
+        radial-gradient(800px 600px at 50% 65%, rgba(0,0,0,.55), transparent 60%);
+      mix-blend-mode: screen;
+      opacity:.55;
+    }
+    .frame:after{
+      content:"";
+      position:absolute; inset:-2px;
+      border-radius: 20px;
+      pointer-events:none;
+      background: linear-gradient(180deg, rgba(124,255,155,.16), rgba(124,255,155,.02) 35%, rgba(124,255,155,.10));
+      opacity:.12;
+    }
+
+    header{
+      position: relative;
+      display:flex;
+      align-items:flex-end;
+      justify-content:space-between;
+      gap:12px;
+      padding:10px 8px 12px;
+      border-bottom: 1px solid var(--border2);
+      z-index: 5;
+    }
+    .title{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      min-width: 240px;
+    }
+    .title h1{
+      margin:0;
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--fg);
+      text-shadow: 0 0 10px rgba(124,255,155,.25);
+    }
+    .subtitle{
+      font-size: 12px;
+      color: rgba(124,255,155,.75);
+      line-height:1.25;
+    }
+
+    .banner{
+      margin: 10px 8px 6px;
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      overflow: hidden;
+      background: rgba(0,0,0,.35);
+      box-shadow: inset 0 0 24px rgba(124,255,155,.08);
+    }
+    .banner img{
+      display:block;
+      width:100%;
+      height:auto;
+      filter:
+        grayscale(100%)
+        brightness(0.8)
+        contrast(1.15)
+        drop-shadow(0 0 6px rgba(124,255,155,.25));
+      opacity:0.85;
+    }
+
+    .hud{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+      text-align:right;
+      font-size: 12px;
+      color: rgba(124,255,155,.9);
+    }
+    .pill{
+      padding:7px 9px;
+      border: 1px solid var(--border2);
+      background: rgba(124,255,155,.04);
+      border-radius: 999px;
+      box-shadow: inset 0 0 24px rgba(124,255,155,.06);
+      white-space:nowrap;
+    }
+    .btn{
+      cursor:pointer;
+      user-select:none;
+      border: 1px solid var(--border);
+      background: rgba(124,255,155,.06);
+      color: var(--fg);
+      font-family: var(--mono);
+      padding:7px 10px;
+      border-radius: 10px;
+      box-shadow: 0 8px 18px rgba(0,0,0,.35), inset 0 0 22px rgba(124,255,155,.08);
+      transition: transform .08s ease, background .12s ease, border-color .12s ease;
+    }
+    .btn:hover{ background: rgba(124,255,155,.09); }
+    .btn:active{ transform: translateY(1px); }
+
+    main{
+      padding: 14px 8px 6px;
+      display:grid;
+      grid-template-columns: 1fr;
+      gap:14px;
+      position:relative;
+      z-index:1;
+    }
+
+    /* Controls-only row (scope removed) */
+    .scope{
+      display:flex;
+      gap:12px;
+      align-items:stretch;
+      flex-wrap:wrap;
+    }
+    .scopeMeta{
+      flex: 1 1 320px;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+      border: 1px solid var(--border2);
+      background: rgba(0,0,0,.18);
+      border-radius: 14px;
+      padding: 10px 12px;
+      min-width: 240px;
+      box-shadow: inset 0 0 38px rgba(124,255,155,.05);
+    }
+    .scopeMeta .row{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      font-size: 12px;
+      color: rgba(124,255,155,.85);
+    }
+    .scopeMeta label{
+      display:flex;
+      justify-content:space-between;
+      gap:12px;
+      align-items:center;
+      font-size: 12px;
+      color: rgba(124,255,155,.85);
+    }
+    select{
+      background: rgba(0,0,0,.35);
+      color: var(--fg);
+      border: 1px solid var(--border2);
+      border-radius: 10px;
+      padding:6px 8px;
+      font-family: var(--mono);
+    }
+
+    /* Board */
+    .boardWrap{
+      border: 1px solid var(--border2);
+      background: rgba(0,0,0,.16);
+      border-radius: 14px;
+      padding: 12px;
+      box-shadow: inset 0 0 40px rgba(124,255,155,.05);
+    }
+    .board{
+      display:grid;
+      gap:10px;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+    @media (max-width: 980px){
+      .board{ grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    }
+    @media (max-width: 760px){
+      .board{ grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    }
+    @media (max-width: 520px){
+      .board{ grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    }
+
+    .tile{
+      position:relative;
+      aspect-ratio: 1 / 1;
+      perspective: 900px;
+      cursor:pointer;
+      user-select:none;
+      outline:none;
+    }
+    .card{
+      position:absolute; inset:0;
+      transform-style: preserve-3d;
+      transition: transform 260ms ease;
+      border-radius: 12px;
+    }
+    .tile[aria-disabled="true"]{ cursor: default; }
+    .tile.revealed .card, .tile.matched .card{ transform: rotateY(180deg); }
+
+    .face{
+      position:absolute; inset:0;
+      backface-visibility:hidden;
+      border-radius: 12px;
+      border: 1px solid var(--border2);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding:10px;
+      box-sizing:border-box;
+      text-align:center;
+      line-height:1.15;
+    }
+    .front{
+      background:
+        linear-gradient(180deg, rgba(124,255,155,.06), rgba(124,255,155,.02)),
+        radial-gradient(140px 120px at 50% 35%, rgba(124,255,155,.10), transparent 55%),
+        rgba(0,0,0,.35);
+      box-shadow: inset 0 0 36px rgba(124,255,155,.06);
+    }
+
+    /* Front-face mini trace (replaces MSO label) */
+    .front .mini{
+      width: 78%;
+      height: 78%;
+      border-radius: 10px;
+      border: 1px dashed rgba(124,255,155,.22);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background: rgba(0,0,0,.14);
+      box-shadow: inset 0 0 18px rgba(124,255,155,.05);
+    }
+    .miniScope{
+      width: 92%;
+      height: 92%;
+      display:block;
+    }
+    .miniScope path{
+      stroke: rgba(124,255,155,.60);
+      stroke-width: 1.4;
+      fill: none;
+      filter: drop-shadow(0 0 4px rgba(124,255,155,.20));
+    }
+    .miniScope .ghost{
+      stroke: rgba(124,255,155,.18);
+      stroke-width: 3.2;
+    }
+
+    .back{
+      transform: rotateY(180deg);
+      background:
+        linear-gradient(180deg, rgba(124,255,155,.08), rgba(124,255,155,.02)),
+        radial-gradient(140px 120px at 50% 35%, rgba(124,255,155,.12), transparent 55%),
+        rgba(0,0,0,.45);
+      box-shadow: inset 0 0 44px rgba(124,255,155,.08);
+    }
+    .back .symbol{
+      font-size: 40px;
+      color: var(--fg);
+      text-shadow: 0 0 12px rgba(124,255,155,.22);
+    }
+    .back .name{
+      font-size: 12px;
+      color: rgba(124,255,155,.92);
+      word-break: break-word;
+    }
+    .tag{
+      position:absolute;
+      bottom:8px; left:8px; right:8px;
+      font-size: 10px;
+      color: rgba(124,255,155,.55);
+      opacity:.9;
+    }
+    .tile.matched .back{
+      border-color: rgba(124,255,155,.38);
+    }
+    .tile.matched .tag{ color: rgba(124,255,155,.78); }
+
+    footer{
+      padding: 10px 8px 0;
+      border-top: 1px solid var(--border2);
+      margin-top: 8px;
+      font-size: 11px;
+      color: rgba(124,255,155,.65);
+      position:relative;
+      z-index:1;
+    }
+    .statusLine{
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .note{
+      margin-top: 6px;
+      color: rgba(124,255,155,.55);
+      line-height:1.35;
+    }
+
+    @keyframes flicker {
+      0% { opacity: 1; }
+      3% { opacity: .92; }
+      6% { opacity: 1; }
+      10% { opacity: .96; }
+      12% { opacity: 1; }
+      100% { opacity: 1; }
+    }
+    .frame{ animation: flicker 6.5s infinite; }
+
+    .monoDim{ color: rgba(124,255,155,.70); }
+  </style>
+</head>
+
+<body>
+<div class="crt">
+  <div class="frame" role="application" aria-label="MSO Memory Game">
+    <header>
+      <div class="title">
+        <h1>MSO Memory: Glyph ↔ Name</h1>
+        <div class="subtitle">Match each glyph to its regime name.</div>
+      </div>
+
+      <div class="hud">
+        <div class="pill">Moves: <span id="moves">0</span></div>
+        <div class="pill">Matches: <span id="matches">0</span>/<span id="totalPairs">0</span></div>
+        <div class="pill">Time: <span id="time">00:00</span></div>
+        <button class="btn" id="newGameBtn" type="button">New Game</button>
+      </div>
+    </header>
+
+    <div class="banner">
+      <img src="sequence.jpg" alt="MSO glyph sequence">
+    </div>
+
+    <main>
+      <div class="scope">
+        <div class="scopeMeta" aria-label="Controls">
+          <div class="row"><span>Deck</span><span class="monoDim" id="deckInfo"></span></div>
+          <label>
+            Difficulty
+            <select id="difficulty">
+              <option value="4">4 pairs</option>
+              <option value="6">6 pairs</option>
+              <option value="8" selected>8 pairs</option>
+              <option value="10">10 pairs</option>
+              <option value="12">12 pairs</option>
+              <option value="18">18 pairs</option>
+              <option value="24">24 pairs</option>
+              <option value="30">30 pairs</option>
+              <option value="34">All pairs</option>
+            </select>
+          </label>
+          <button class="btn" id="reseedBtn" type="button">Reshuffle</button>
+        </div>
+      </div>
+
+      <div class="boardWrap">
+        <div class="board" id="board" aria-label="Memory board"></div>
+      </div>
+    </main>
+
+    <footer>
+      <div class="statusLine">
+        <span>Rule: reveal two tiles; a match requires one glyph and its corresponding name.</span>
+        <span>Input: click or tap; keyboard: Tab + Enter/Space.</span>
+      </div>
+    </footer>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const PAIRS = [
+    { name: "ocularo", symbol: "⊙" },
+    { name: "monoturno", symbol: "⟲" },
+    { name: "lamphron", symbol: "⇝" },
+    { name: "lamphrodyno", symbol: "⇌" },
+    { name: "gravito", symbol: "Δ" },
+    { name: "quarko", symbol: "𝜀" },
+    { name: "electro", symbol: "e" },
+    { name: "lepto", symbol: "ℓ" },
+    { name: "fermio", symbol: "f" },
+    { name: "photo", symbol: "𝛾" },
+    { name: "gluo", symbol: "g" },
+    { name: "meso", symbol: "𝜇" },
+    { name: "boso", symbol: "𝛽" },
+    { name: "proto", symbol: "p" },
+    { name: "neutro", symbol: "∘" },
+    { name: "baryo", symbol: "B" },
+    { name: "hadro", symbol: "H" },
+    { name: "ato", symbol: "𝛼" },
+    { name: "moleculo", symbol: "ℳ" },
+    { name: "unicellulo", symbol: "𝒰" },
+    { name: "crystolattisso", symbol: "Λ" },
+    { name: "micro", symbol: "𝜎" },
+    { name: "megalobio", symbol: "ℬ" },
+    { name: "gaiama", symbol: "ℰ" },
+    { name: "technio", symbol: "𝒯" },
+    { name: "tella", symbol: "⊕" },
+    { name: "gaiaselena", symbol: "⊚" },
+    { name: "solara", symbol: "𝜕" },
+    { name: "perinebula", symbol: "⋆" },
+    { name: "vacuo", symbol: "∅" },
+    { name: "oriocygnobrachio", symbol: "Ω" },
+    { name: "galacto", symbol: "𝒢" },
+    { name: "proximasystada", symbol: "⊛" },
+    { name: "virgo", symbol: "V" },
+    { name: "laniakeasuperclusto", symbol: "⋈" },
+    { name: "piscescetusfilamento", symbol: "⟶" },
+    { name: "cytosis", symbol: "∇" }
+  ];
+
+  const boardEl = document.getElementById("board");
+  const movesEl = document.getElementById("moves");
+  const matchesEl = document.getElementById("matches");
+  const totalPairsEl = document.getElementById("totalPairs");
+  const timeEl = document.getElementById("time");
+  const newGameBtn = document.getElementById("newGameBtn");
+  const reseedBtn = document.getElementById("reseedBtn");
+  const difficultyEl = document.getElementById("difficulty");
+  const deckInfoEl = document.getElementById("deckInfo");
+
+  let deck = [];
+  let firstPick = null;
+  let secondPick = null;
+  let lock = false;
+  let moves = 0;
+  let matches = 0;
+
+  let startTime = null;
+  let timerHandle = null;
+
+  function pad2(n){ return String(n).padStart(2,"0"); }
+  function formatTime(ms){
+    const s = Math.floor(ms/1000);
+    return `${pad2(Math.floor(s/60))}:${pad2(s%60)}`;
+  }
+  function startTimer(){
+    if (timerHandle) return;
+    startTime = performance.now();
+    timerHandle = setInterval(() => {
+      const now = performance.now();
+      timeEl.textContent = formatTime(now - startTime);
+    }, 250);
+  }
+  function stopTimer(){
+    if (timerHandle){
+      clearInterval(timerHandle);
+      timerHandle = null;
+    }
+  }
+  function resetTimer(){
+    stopTimer();
+    timeEl.textContent = "00:00";
+    startTime = null;
+  }
+
+  function shuffle(arr){
+    for (let i = arr.length - 1; i > 0; i--){
+      const j = Math.floor(Math.random() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  // Deterministic mini-trace generation
+  function hash32(str){
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++){
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+  function rand01(seed){
+    let x = seed >>> 0;
+    x ^= x << 13; x >>>= 0;
+    x ^= x >>> 17; x >>>= 0;
+    x ^= x << 5; x >>>= 0;
+    return (x >>> 0) / 4294967296;
+  }
+  function miniLissajousPath(seedStr, points){
+    const base = hash32(String(seedStr));
+    const r1 = rand01(base ^ 0x9e3779b9);
+    const r2 = rand01(base ^ 0x7f4a7c15);
+    const r3 = rand01(base ^ 0x85ebca6b);
+
+    const a = 2 + Math.floor(r1 * 5);     // 2..6
+    const b = 2 + Math.floor(r2 * 5);     // 2..6
+    const delta = (r3 * Math.PI) * 2.0;
+
+    const cx = 50, cy = 50;
+    const rx = 38, ry = 38;
+
+    let d = "";
+    for (let i = 0; i < points; i++){
+      const t = (i / (points - 1)) * Math.PI * 2.0;
+      const x = cx + rx * Math.sin(a * t + delta);
+      const y = cy + ry * Math.sin(b * t);
+      d += (i === 0 ? "M" : "L") + x.toFixed(2) + " " + y.toFixed(2) + " ";
+    }
+    return d.trim();
+  }
+
+  function buildDeck(pairCount){
+    const chosen = shuffle([...PAIRS]).slice(0, pairCount);
+
+    const cards = [];
+    for (const p of chosen){
+      cards.push({
+        id: crypto.randomUUID(),
+        key: p.name,
+        kind: "symbol",
+        face: p.symbol,
+        label: p.name
+      });
+      cards.push({
+        id: crypto.randomUUID(),
+        key: p.name,
+        kind: "name",
+        face: p.name,
+        label: p.symbol
+      });
+    }
+    return shuffle(cards);
+  }
+
+  function setHUD(){
+    movesEl.textContent = String(moves);
+    matchesEl.textContent = String(matches);
+    totalPairsEl.textContent = String(deck.length / 2);
+    deckInfoEl.textContent = `${deck.length/2} pairs / ${deck.length} tiles`;
+  }
+
+  function clearBoard(){
+    boardEl.innerHTML = "";
+    firstPick = null;
+    secondPick = null;
+    lock = false;
+  }
+
+  function escapeHTML(s){
+    return String(s)
+      .replaceAll("&","&amp;")
+      .replaceAll("<","&lt;")
+      .replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;")
+      .replaceAll("'","&#39;");
+  }
+
+
+function tileHTML(card){
+  const isSymbol = card.kind === "symbol";
+  const backInner = isSymbol
+    ? `<div class="symbol" aria-label="glyph">${escapeHTML(card.face)}</div>`
+    : `<div class="name" aria-label="name">${escapeHTML(card.face)}</div>`;
+
+  const tag = isSymbol ? `name: ${card.key}` : `glyph: ${card.label}`;
+
+  // Seed the mini trace by card.id so EVERY card is unique (no pair-based “cheat cue”).
+  const d = miniLissajousPath(card.id, 120);
+
+  return `
+    <div class="tile" role="button" tabindex="0" aria-disabled="false" data-id="${card.id}">
+      <div class="card">
+        <div class="face front">
+          <div class="mini">
+            <svg class="miniScope" viewBox="0 0 100 100" aria-hidden="true">
+              <path class="ghost" d="${d}"></path>
+              <path d="${d}"></path>
+            </svg>
+          </div>
+        </div>
+        <div class="face back">
+          ${backInner}
+          <div class="tag">${escapeHTML(tag)}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+  function renderBoard(){
+    clearBoard();
+    const frag = document.createDocumentFragment();
+    const wrapper = document.createElement("div");
+    wrapper.innerHTML = deck.map(tileHTML).join("");
+    while (wrapper.firstElementChild){
+      frag.appendChild(wrapper.firstElementChild);
+    }
+    boardEl.appendChild(frag);
+
+    boardEl.querySelectorAll(".tile").forEach(tile => {
+      tile.addEventListener("click", () => onPick(tile));
+      tile.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " "){
+          e.preventDefault();
+          onPick(tile);
+        }
+      });
+    });
+  }
+
+  function getCardById(id){
+    return deck.find(c => c.id === id);
+  }
+
+  function reveal(tile){ tile.classList.add("revealed"); }
+  function hide(tile){ tile.classList.remove("revealed"); }
+  function match(tile){
+    tile.classList.add("matched");
+    tile.setAttribute("aria-disabled","true");
+  }
+
+  function onPick(tile){
+    if (lock) return;
+    if (tile.getAttribute("aria-disabled") === "true") return;
+    if (tile.classList.contains("revealed")) return;
+
+    if (!startTime) startTimer();
+
+    reveal(tile);
+    const card = getCardById(tile.dataset.id);
+
+    if (!firstPick){
+      firstPick = { tile, card };
+      return;
+    }
+
+    secondPick = { tile, card };
+    lock = true;
+
+    moves += 1;
+    setHUD();
+
+    const isMatch =
+      firstPick.card.key === secondPick.card.key &&
+      firstPick.card.kind !== secondPick.card.kind;
+
+    if (isMatch){
+      window.setTimeout(() => {
+        match(firstPick.tile);
+        match(secondPick.tile);
+        matches += 1;
+        setHUD();
+        firstPick = null;
+        secondPick = null;
+        lock = false;
+
+        if (matches === deck.length / 2){
+          stopTimer();
+        }
+      }, 250);
+    } else {
+      window.setTimeout(() => {
+        hide(firstPick.tile);
+        hide(secondPick.tile);
+        firstPick = null;
+        secondPick = null;
+        lock = false;
+      }, 650);
+    }
+  }
+
+  function newGame(){
+    const pairCount = Math.min(parseInt(difficultyEl.value,10), PAIRS.length);
+    deck = buildDeck(pairCount);
+    moves = 0;
+    matches = 0;
+    resetTimer();
+    setHUD();
+    renderBoard();
+  }
+
+  newGameBtn.addEventListener("click", newGame);
+  reseedBtn.addEventListener("click", () => {
+    deck = shuffle(deck);
+    renderBoard();
+  });
+  difficultyEl.addEventListener("change", newGame);
+
+  newGame();
+})();
+</script>
+</body>
+</html>
